@@ -1,0 +1,13 @@
+{
+  "devDependencies": {
+    "@types/node": "^20.6.0",
+    "vite": "^4.4.9",
+    "vite-plugin-glsl": "^1.1.2"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "tsx test/"
+  },
+  "author": "Sam Thorogood <sam.thorogood@gmail.com>",
+  "license": "Apache-2.0"
+}

@@ -3,7 +3,7 @@ console.info('Hi');
 // @ts-ignore
 import colorFrag from './shaders/color.frag';
 // @ts-ignore
-import screenVert from './shaders/screen.vert';
+import pointScreenVert from './shaders/simple.vert';
 
 function loadShader(gl: WebGL2RenderingContext, type: number, source: string) {
   const shader = gl.createShader(type)!;
@@ -32,7 +32,7 @@ function createGame(arg: { w: number; h: number; ratio?: number }) {
 
   const gl = c.getContext('webgl2')!;
 
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, screenVert);
+  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, pointScreenVert);
   const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, colorFrag);
 
   const shaderProgram = gl.createProgram()!;
@@ -65,33 +65,22 @@ function createGame(arg: { w: number; h: number; ratio?: number }) {
 
   // array of points
 
-  const array = new Float32Array(1000); // allow for 500 sprites
-  array[0] = 32; // x-value
-  array[1] = 32; // y-value
-  array[2] = 256; // x-value
-  array[3] = 128; // y-value
-
-  const glBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, glBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, array, gl.DYNAMIC_DRAW); // upload data
-
-  // upload array
-
-  const loc = gl.getAttribLocation(shaderProgram, 'spritePosition');
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(
-    loc,
-    2, // because it was a vec2
-    gl.FLOAT, // vec2 contains floats
-    false, // ignored
-    0, // each value is next to each other
-    0, // starts at start of array
-  );
+  const vertexPositionAttribute = gl.getAttribLocation(shaderProgram, 'v_position');
+  const quadVertexBuffer = gl.createBuffer();
+  const quadVertexBufferData = new Float32Array([
+    -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0,
+  ]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadVertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, quadVertexBufferData, gl.STATIC_DRAW);
+  gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
 
   function draw() {
+    gl.uniform2f(gl.getUniformLocation(shaderProgram, 'screenOffset'), 1024, 1024);
+
     gl.clear(gl.COLOR_BUFFER_BIT); // clear screen
     gl.useProgram(shaderProgram); // activate our program
-    gl.drawArrays(gl.POINTS, 0, 2); // run our program by drawing points (one for now)
+    gl.enableVertexAttribArray(vertexPositionAttribute);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
   draw();
 

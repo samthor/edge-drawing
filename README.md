@@ -1,1 +1,1 @@
-This is a project.
+Attempts to draw interesting WebGL flat things

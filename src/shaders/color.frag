@@ -5,95 +5,91 @@ precision mediump float;
 out vec4 fragColor;
 uniform sampler2D spriteTexture;  // texture we are drawing
 
+uniform vec2 screenSize;
+uniform vec2 screenOffset;  // in px
+
+int GRID_SIZE = 32;
+
+
+vec4 colorForPosition(ivec2 gamePos) {
+  vec2 gridPos = vec2(gamePos.x / GRID_SIZE, gamePos.y / GRID_SIZE);
+  ivec2 integerGridPos = ivec2(gridPos);
+
+  return texelFetch(spriteTexture, integerGridPos, 0);
+}
+
+// Noise
+vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+vec3 fade(vec3 t) { return t*t*t*(t*(t*6.0-15.0)+10.0); }
+float noise(vec3 P) {
+    vec3 i0 = mod289(floor(P)), i1 = mod289(i0 + vec3(1.0));
+    vec3 f0 = fract(P), f1 = f0 - vec3(1.0), f = fade(f0);
+    vec4 ix = vec4(i0.x, i1.x, i0.x, i1.x), iy = vec4(i0.yy, i1.yy);
+    vec4 iz0 = i0.zzzz, iz1 = i1.zzzz;
+    vec4 ixy = permute(permute(ix) + iy), ixy0 = permute(ixy + iz0), ixy1 = permute(ixy + iz1);
+    vec4 gx0 = ixy0 * (1.0 / 7.0), gy0 = fract(floor(gx0) * (1.0 / 7.0)) - 0.5;
+    vec4 gx1 = ixy1 * (1.0 / 7.0), gy1 = fract(floor(gx1) * (1.0 / 7.0)) - 0.5;
+    gx0 = fract(gx0); gx1 = fract(gx1);
+    vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0), sz0 = step(gz0, vec4(0.0));
+    vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1), sz1 = step(gz1, vec4(0.0));
+    gx0 -= sz0 * (step(0.0, gx0) - 0.5); gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+    gx1 -= sz1 * (step(0.0, gx1) - 0.5); gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+    vec3 g0 = vec3(gx0.x,gy0.x,gz0.x), g1 = vec3(gx0.y,gy0.y,gz0.y),
+        g2 = vec3(gx0.z,gy0.z,gz0.z), g3 = vec3(gx0.w,gy0.w,gz0.w),
+        g4 = vec3(gx1.x,gy1.x,gz1.x), g5 = vec3(gx1.y,gy1.y,gz1.y),
+        g6 = vec3(gx1.z,gy1.z,gz1.z), g7 = vec3(gx1.w,gy1.w,gz1.w);
+    vec4 norm0 = taylorInvSqrt(vec4(dot(g0,g0), dot(g2,g2), dot(g1,g1), dot(g3,g3)));
+    vec4 norm1 = taylorInvSqrt(vec4(dot(g4,g4), dot(g6,g6), dot(g5,g5), dot(g7,g7)));
+    g0 *= norm0.x; g2 *= norm0.y; g1 *= norm0.z; g3 *= norm0.w;
+    g4 *= norm1.x; g6 *= norm1.y; g5 *= norm1.z; g7 *= norm1.w;
+    vec4 nz = mix(vec4(dot(g0, vec3(f0.x, f0.y, f0.z)), dot(g1, vec3(f1.x, f0.y, f0.z)),
+        dot(g2, vec3(f0.x, f1.y, f0.z)), dot(g3, vec3(f1.x, f1.y, f0.z))),
+        vec4(dot(g4, vec3(f0.x, f0.y, f1.z)), dot(g5, vec3(f1.x, f0.y, f1.z)),
+            dot(g6, vec3(f0.x, f1.y, f1.z)), dot(g7, vec3(f1.x, f1.y, f1.z))), f.z);
+    return 2.2 * mix(mix(nz.x,nz.z,f.y), mix(nz.y,nz.w,f.y), f.x);
+}
+float noise(vec2 P) { return noise(vec3(P, 0.0)); }
+
+vec2 adjustScreenByNoise(vec2 screenPosFloat) {
+  float SMOOTH_BY = 35.0;
+  float SHIFT_BY = 6.28;
+  float FACTOR = 2.0;
+
+  // note: The bigger this const is, the smoother our noise function is
+  vec2 noiseInputParam = screenPosFloat / SMOOTH_BY;
+
+  float noiseAtX = noise(vec2(noiseInputParam.x, noiseInputParam.y)) * SHIFT_BY;
+  float noiseAtY = noise(vec2(noiseInputParam.y, noiseInputParam.x)) * SHIFT_BY;
+
+  screenPosFloat.x += sin(noiseAtX) * noiseAtY;
+  screenPosFloat.y += cos(noiseAtX) * noiseAtY;
+
+  return screenPosFloat;
+}
 
 void main() {
-  int level = 1; // TODO: this is the 64-wide mipmap for our 128-size sprite
 
+  // Move 0,0 to the top left.
+  vec2 screenPosFloat = vec2(gl_FragCoord.x + screenOffset.x, screenSize.y - gl_FragCoord.y + screenOffset.y);
 
-  float THRESH = 0.5;
-  float THRESH_LOW = 0.9;
+  screenPosFloat = adjustScreenByNoise(screenPosFloat);
+  vec2 screenPosUpFloat = adjustScreenByNoise(screenPosFloat - vec2(0, 1));
+  vec2 screenPosLeftFloat = adjustScreenByNoise(screenPosFloat - vec2(1, 0));
 
-  fragColor = vec4(0.0, 0.0, 1.0, 1.0);
+  // Modulo the grid position.
+  vec4 nHere = colorForPosition(ivec2(screenPosFloat));
+  vec4 nUp = colorForPosition(ivec2(screenPosUpFloat));
+  vec4 nLeft = colorForPosition(ivec2(screenPosLeftFloat));
 
-  ivec2 size = textureSize(spriteTexture, 0);
-  ivec2 intPos = ivec2(gl_PointCoord * vec2(size)) / 2;
-  vec4 here = texelFetch(spriteTexture, intPos, level);
+  fragColor = nHere;
 
-  // If we're alpha >=0.5, then just draw the real image. We're supposed to show.
-// vec4 here = texture(spriteTexture, gl_PointCoord);
-  if (here.a > THRESH) {
-    fragColor = here;
-    fragColor = vec4(0.0, 1.0, 0.0, 1.0);
-    return;
+  if (nHere != nUp || nHere != nLeft) {
+    fragColor = vec4(0, 0, 0, 1);
   }
-
-  vec4 nUp = texelFetch(spriteTexture, intPos - ivec2(0, 1), level);
-  vec4 nDown = texelFetch(spriteTexture, intPos + ivec2(0, 1), level);
-  vec4 nLeft = texelFetch(spriteTexture, intPos - ivec2(1, 0), level);
-  vec4 nRight = texelFetch(spriteTexture, intPos + ivec2(1, 0), level);
-
-  // if (nLeft.a >= THRESH) {
-  //   fragColor = vec4(1.0, 0.0, 0.0, 1.0);
-  // }
-  // return;
-
-  float is_edge2 =
-      max(THRESH_LOW, nUp.a) +
-      max(THRESH_LOW, nDown.a) +
-      max(THRESH_LOW, nLeft.a) +
-      max(THRESH_LOW, nRight.a) +
-      0.0;
-  is_edge2 /= 4.0;
-
-  if (is_edge2 > THRESH_LOW) {
-    fragColor = vec4(1.0, 0.0, 0.0, 0.25);
-  }
-
-
-  // Do we have any neighbors >THRESH? This says.. reduce all by THRESH, add together, will be +ve
-  // if there is at least one.
-  float is_edge =
-      max(THRESH, nUp.a) +
-      max(THRESH, nDown.a) +
-      max(THRESH, nLeft.a) +
-      max(THRESH, nRight.a) +
-      0.0;
-  is_edge /= 4.0;
-
-  if (is_edge > THRESH) {
-    if (is_edge2 > THRESH_LOW) {
-      fragColor = vec4(1.0, 1.0, 0.0, 1.0);
-    } else {
-      fragColor = vec4(1.0, 0.0, 0.0, 1.0);
-    }
-    return;
-  }
-
-  // if (is_edge > THRESH) {
-  // }
-  // if (is_edge > THRESH + 0.125) {
-  //   fragColor = vec4(1.0, 0.0, 0.0, 1.0);
-  // }
-
-
-//   if (nDown.a < THRESH) {
-//     fragColor = vec4(1.0, 0.0, 0.0, 1.0);
-//   } else if (nUp.a < THRESH) {
-// //    fragColor = vec4(1.0, 0.0, 1.0, 1.0);
-//   } else {
-// //    fragColor = vec4(0.0, 0.0, 1.0, 1.0);
-//   }
-
-//   if (nLeft.a < THRESH) {
-//     fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-//   }
-
-  // if (nUp.a < THRESH || nDown.a < THRESH) { // || nLeft.a < THRESH || nRight.a < THRESH) {
-  //   fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-  //   return;
-  // }
-
-//  fragColor = vec4(1.0, 0.0, 1.0, here.a);
-  // fragColor = here;
-  // fragColor.rgb *= fragColor.a;
 }
+
+
+
